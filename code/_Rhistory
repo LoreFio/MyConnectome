@@ -1,0 +1,306 @@
+library(devtools)
+install.packages("devtools")
+install.packages("openssl")
+help("cor")
+a = c(1,2,3)
+norm(a)
+b = c(1,1,1)
+cor(a,c)
+cor(a,b)
+cor(a,a)
+cor(a,a+b)
+quit()
+setwd("Poli-University/Magistrale/AS/Project/code")
+library(fdaPDE)
+rm(list = ls())
+max_valid_label = 83
+min_num_points = 5 # in each region
+ROI = 60
+library(fdaPDE)
+max_valid_label = 83
+min_num_points = 5 # in each region
+ROI = 60
+var_explained = 0.5
+load_thres = 0.5
+want_plots = F
+call_pc_global = T
+call_pc_mean = T
+want_plots = T
+call_pc_global = T
+call_pc_mean = T
+time_window_segmentation=T
+source("submatrices_per_region.R")
+source("pca_global.R")
+source("pca_correlation.R")
+load(paste0("../data/Myconnectome/connectivityMaps_myconnectome_",
+ROI,".RData"))	# It's enought to load any datamatrix
+library(fdaPDE)
+library(mgcv)
+#Set your code directory like for instance
+#
+myconn_folder = "../data/Myconnectome/"
+time_series_folder = paste0(myconn_folder,"time_series/")
+ROI_number = 60
+# Carico i dati per la mesh dei task based
+node_myconnectome_17287 <- read.csv(
+paste0(myconn_folder,"node_myconnectome_17287.csv"),
+header=FALSE)
+elem_myconnectome_all_tissue_17287 <- read.csv(
+paste0(myconn_folder,"elem_myconnectome_all_tissue_17287.csv"),
+header=FALSE)
+# La colonna 5 di elem_BART_all_tissue_small contiene l'indicazione per vedere a quale regione appartiene un tetraedro
+# 3 = liquido esterno
+# 4 = gray matter
+# 5 = white matter
+nodes = node_myconnectome_17287
+elems = elem_myconnectome_all_tissue_17287[,1:4]
+mesh <- create.MESH.3D(nodes=nodes, tetrahedrons = elems)
+plot(mesh)
+# # Esempio di come estrarre solo una parte della mesh:
+# # Conviene farlo nel caso dopo aver definito la ROI
+#
+# estraggo gli elementi nella gm:
+# elem_only_gm = elem_myconnectome_all_tissue_17287[
+# 					(elem_myconnectome_all_tissue_17287[,5] == 4),
+# 					1:4]
+#
+# e i relativi indici:
+# elem_only_gm_indexes = sort(unique(c(as.matrix(elem_only_gm))))
+#
+# trovo quali nodi fanno parte della gm:
+# nodes_only_gm = nodes[elem_only_gm_indexes,]
+#
+# estraggo i nodi nella gm:
+# mesh_only_gm <- create.MESH.3D(nodes = nodes_only_gm,
+# 									tetrahedrons = elem_only_gm)
+# Carico il vettore con l'indicazione di a che regione del cervello
+# appartengono i nodi
+labels_hammer_myconnectome_small <- read.table(
+paste0(myconn_folder,"labels_hammer_myconnectome_new2.csv"),
+quote="\"", comment.char="")
+# Per il BART la ROI ? la 24
+#
+# Per myConnectome, la ROI scelta ? la 59
+#
+ROI_index = ifelse(labels_hammer_myconnectome_small == ROI_number, 1, 0)
+ROI_index = as.logical(ROI_index)
+names_session=sprintf('%0.3d', 11:104)
+names_session=names_session[-c(42,80)]
+datamatrix=NULL
+for(k in 1:length(names_session)){
+name=paste(time_series_folder,"ses",names_session[k],"_time_series.csv",sep="")
+time_series=as.matrix(read.csv(name, header=FALSE))
+time_series=t(time_series)
+time_series=time_series[1:518,]
+ROI_ts=time_series[,ROI_index]
+dim(ROI_ts)
+cross_sec_avg_ROI_row=as.vector(rowMeans(ROI_ts))
+cor_nodes<-NULL
+for(j in 1:mesh$nnodes){
+cor_nodes<-c(cor_nodes,cor(cross_sec_avg_ROI_row,time_series[,j]))
+}
+#cor_nodes[which(is.na(cor_nodes))]<-0
+r=cor_nodes
+z = 0.5 * log((1+r)/(1-r))
+datamatrix<-rbind(datamatrix,z)
+print(k)
+}
+datamatrix[which(is.na(datamatrix))]=0
+save(datamatrix,file=paste0(myconn_folder,"connectivityMaps_myconnectome_",ROI_number,".RData"))
+# Tolgo la media dai dati
+data_bar = colMeans(datamatrix, na.rm = TRUE)
+data_demean = matrix(rep(data_bar, nrow(datamatrix)), nrow = nrow(datamatrix), byrow = TRUE)
+datamatrix_demeaned = datamatrix - data_demean
+PCA_mv = prcomp(datamatrix_demeaned, center = FALSE)
+graphics.off()
+rm(list = ls())
+library(fdaPDE)
+max_valid_label = 83
+min_num_points = 5 # in each region
+ROI = 60
+var_explained = 0.5
+load_thres = 0.5
+want_plots = T
+call_pc_global = T
+call_pc_mean = T
+time_window_segmentation=T
+source("submatrices_per_region.R")
+source("pca_global.R")
+source("pca_correlation.R")
+load(paste0("../data/Myconnectome/connectivityMaps_myconnectome_",
+ROI,".RData"))	# It's enought to load any datamatrix
+### DANGER
+# In order to read properly the label file use read.table instead
+# of read.csv
+reg_labels = read.table(
+"../data/Myconnectome/labels_hammer_myconnectome_new2.csv",
+quote = "\"", comment.char = "")
+matrix_list = submatrices_per_region(datamatrix, reg_labels)
+meaningless_reg = 0
+for(j in 1:max_valid_label)
+{
+if( j > max_valid_label || is.null(dim(matrix_list[[j]])[2])
+|| dim(matrix_list[[j]])[2] < min_num_points )
+{
+meaningless_reg = c(meaningless_reg,j)
+}
+}
+rm(datamatrix, matrix_list)
+# Meaningfull regions
+label_name = 1:max_valid_label
+label_name = label_name[-meaningless_reg] # 78
+if(call_pc_global)
+{
+pca_global(ROI = ROI,
+var_explained = var_explained, want_plots = want_plots)
+}
+rm(list = ls())
+library(fdaPDE)
+max_valid_label = 83
+min_num_points = 5 # in each region
+ROI = 60
+var_explained = 0.5
+load_thres = 0.5
+n_max_pc_plot = 4
+want_plots = T
+call_pc_global = T
+call_pc_mean = T
+time_window_segmentation=T
+source("submatrices_per_region.R")
+source("pca_global.R")
+source("pca_correlation.R")
+load(paste0("../data/Myconnectome/connectivityMaps_myconnectome_",
+ROI,".RData"))	# It's enought to load any datamatrix
+### DANGER
+# In order to read properly the label file use read.table instead
+# of read.csv
+reg_labels = read.table(
+"../data/Myconnectome/labels_hammer_myconnectome_new2.csv",
+quote = "\"", comment.char = "")
+matrix_list = submatrices_per_region(datamatrix, reg_labels)
+meaningless_reg = 0
+for(j in 1:max_valid_label)
+{
+if( j > max_valid_label || is.null(dim(matrix_list[[j]])[2])
+|| dim(matrix_list[[j]])[2] < min_num_points )
+{
+meaningless_reg = c(meaningless_reg,j)
+}
+}
+rm(datamatrix, matrix_list)
+# Meaningfull regions
+label_name = 1:max_valid_label
+label_name = label_name[-meaningless_reg] # 78
+if(call_pc_global)
+{
+pca_global(ROI = ROI,
+var_explained = var_explained,
+n_max_pc_plot = n_max_pc_plot,
+want_plots = want_plots)
+}
+graphics.off()
+setwd("../data/time_means")
+names_session=sprintf('%0.3d', c(11:41,43:51,53:79,81:89,91:104))
+matrix_list=list() # correlation matrix (78x78) for each session
+for(k in 1:length(names_session))
+{
+name=paste("ses",names_session[k],"_time_means.csv",sep="")
+time_series=t(as.matrix(read.csv(name, header=FALSE))) # 518x83
+if (time_window_segmentation)
+{
+# 14 time windows
+time_series_shorter=matrix(0L, nrow = 14,
+ncol = max_valid_label)
+for (j in 1:max_valid_label) # per ogni colonna (regione)
+{
+s=1
+for (i in 1:14)
+{
+time_series_shorter[i,j] = mean(time_series[s:s+36,j])
+s = s + 37
+}
+}
+time_series = time_series_shorter
+}
+matrix_list[[k]] = cor(time_series[,label_name])
+}
+setwd("../../code/")
+save(matrix_list, label_name, min_num_points,
+file = paste0("../data/mean_cov_experiments.RData"))
+if(want_plots)
+{
+# Evolution of some correlations:
+# regions label_name(13) and label_name(56)
+corr_evol=NULL
+for (k in 1:length(names_session)) {
+corr_evol<-c(corr_evol,matrix_list[[k]][13,56])
+}
+x11()
+plot(corr_evol,type = "l",col="blue")
+# regions label_name(27) and label_name(68)
+corr_evol=NULL
+for (k in 1:length(names_session)) {
+corr_evol<-c(corr_evol,matrix_list[[k]][27,68])
+}
+lines(corr_evol,col="red")
+}
+# ROI setted at the beginning
+ROI_index = which(label_name %in% ROI)
+corr_matrix = matrix(0, nrow = length(names_session),
+ncol = length(label_name))
+for (k in 1:length(names_session))
+{
+for (j in 1:length(label_name))
+{
+corr_matrix[k,j] = cor(matrix_list[[k]][,ROI_index],
+matrix_list[[k]][,j])
+}
+}
+z = 0.5 * log((1+corr_matrix)/(1-corr_matrix))
+z[which(z > 0.99)] = 3.8002 # caso limite: rho=1 !
+z[which(z < -0.99)] = -3.8002 # caso limite: rho=-1 !
+corr_matrix = z
+save(corr_matrix, ROI, ROI_index, label_name,
+file = paste0("../data/mean_",ROI,"_correlation.RData"))
+load(paste0("../data/mean_",ROI,"_correlation.RData"))
+myconn_folder = "../data/Myconnectome/"
+# ATTENTION: in the loaded file the matrix must be saved as corr_matrix
+source("plot_on_mesh_by_region.R")
+pc.mean_reg = princomp(corr_matrix, scores = T)
+summary(pc.mean_reg)
+pc_sdev = pc.mean_reg$sdev
+loadings = pc.mean_reg$loadings
+n_pc_variance = min(which(cumsum(pc_sdev^2)/sum(pc_sdev^2) > var_explained ))
+max(loadings)
+min(loadings)
+mean(loadings)
+var(loadings)
+var(as.vector(loadings))
+mean(as.vector(loadings))
+max(as.vector(loadings))
+min(as.vector(loadings))
+plot(as.vector(loadings))
+shapiro.test(as.vector(loadings))
+74*74
+shapiro.test(as.vector(loadings[,1:60]))
+load_thres = 0.35
+for(i in 1: n_pc_variance)
+{
+vector_regions = c(vector_regions, label_name[which(abs(loadings[,i]) >= load_thres)])
+}
+vector_regions = NULL
+for(i in 1: n_pc_variance)
+{
+vector_regions = c(vector_regions, label_name[which(abs(loadings[,i]) >= load_thres)])
+}
+vector_regions
+load_thres = 0.3
+for(i in 1: n_pc_variance)
+{
+vector_regions = c(vector_regions, label_name[which(abs(loadings[,i]) >= load_thres)])
+}
+vector_regions
+vector_regions = unique(vector_regions)
+vector_regions
+save(vector_regions, ROI,
+file = paste0("../data/vec_regions_",ROI,"_correlation.RData"))
